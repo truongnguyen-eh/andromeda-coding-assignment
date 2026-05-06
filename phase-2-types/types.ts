@@ -4,8 +4,11 @@
 // serialization issues when storing in localStorage or JSON.
 export type DateString = string;
 
-// Opaque ID aliases — string at runtime but distinct in the type system so
-// IDs cannot be mixed across entities.
+// Opaque ID aliases using a phantom brand. At runtime these are plain strings,
+// but the intersection with `{ readonly __brand }` makes each ID type
+// structurally unique so the compiler rejects cross-entity ID misuse —
+// e.g. passing a CategoryId where a TransactionId is expected — without any
+// runtime overhead or wrapping.
 export type TransactionId = string & { readonly __brand: "TransactionId" };
 export type CategoryId = string & { readonly __brand: "CategoryId" };
 export type BudgetId = string & { readonly __brand: "BudgetId" };
@@ -60,28 +63,6 @@ export interface Budget {
   limitAmount: number;
 }
 
-// ─── Derived / View types ────────────────────────────────────────────────────
-
-// Computed at read time by joining Budget with filtered transactions.
-// Kept separate from Budget to make the distinction between stored and derived
-// data explicit — nothing here should ever be persisted.
-export interface BudgetSummary {
-  budget: Budget;
-  category: Category;
-  spent: number;
-  remaining: number;
-  status: BudgetStatus;
-}
-
-// Monthly roll-up used by the Dashboard. Transfers are excluded from both
-// income and expenses; they surface separately if needed.
-export interface MonthlySummary {
-  month: string;        // "YYYY-MM"
-  totalIncome: number;
-  totalExpenses: number;
-  netBalance: number;
-}
-
 // ─── Filter / Query types ─────────────────────────────────────────────────────
 
 // All fields are optional so callers can build partial filters.
@@ -98,6 +79,9 @@ export interface TransactionFilter {
 // The single object written to / read from localStorage. Versioned so future
 // migrations can detect stale data and run upgrade paths.
 export interface PersistedStore {
+  // Incremented whenever the shape of the store changes. On app load, if the
+  // stored version differs from the current schema version, a migration path
+  // can transform old data rather than silently dropping or corrupting it.
   version: number;
   transactions: Transaction[];
   categories: Category[];
@@ -106,9 +90,37 @@ export interface PersistedStore {
 
 // ─── Generic utilities ────────────────────────────────────────────────────────
 
-// Omits the ID so form/create payloads don't need to supply one.
+// Used as the argument type for "add" service functions. The caller supplies all
+// fields except `id`, which the service generates (e.g. crypto.randomUUID()).
+//   addTransaction(payload: CreatePayload<Transaction>) { ... }
 export type CreatePayload<T extends { id: unknown }> = Omit<T, "id">;
 
-// Partial update payload — ID is required for lookup, all other fields optional.
+// Used as the argument type for "edit" service functions. `id` is required so
+// the service can locate the record; every other field is optional so callers
+// only send what changed — no need to re-supply the full object.
+//   updateBudget(payload: UpdatePayload<Budget>) { ... }
 export type UpdatePayload<T extends { id: unknown }> = Pick<T, "id"> &
   Partial<Omit<T, "id">>;
+
+// ─── Branded ID example ───────────────────────────────────────────────────────
+const category: Category = {
+  id: "cat_456" as CategoryId,
+  name: "Groceries",
+  visual: { kind: "color", value: "#ef4444" },
+};
+
+const transaction: Transaction = {
+  id: "txn_123" as TransactionId,
+  amount: 100,
+  date: "2024-06-01",
+  note: "Grocery shopping",
+  categoryId: category.id,
+  type: "expense",
+};
+
+const budget: Budget = {
+  id: "bud_789" as BudgetId,
+  categoryId: category.id,
+  month: "2024-06",
+  limitAmount: 500,
+};
