@@ -20,22 +20,24 @@ export type BudgetId = string & { readonly __brand: "BudgetId" };
 // from budget calculations.
 export type TransactionType = "income" | "expense" | "transfer";
 
+export type CategoryType = "income" | "expense";
+
 // Budget status is derived, not stored — computed at read time from spend vs
 // limit. Represented as a union so UI can switch on it without magic numbers.
 export type BudgetStatus = "ok" | "warning" | "exceeded";
 
 // ─── Category ────────────────────────────────────────────────────────────────
 
-// Kept deliberately flat. Color and icon are alternative visual identifiers;
-// only one is required. Using a union rather than two optional fields makes
-// the intent explicit and prevents both being undefined.
-export type CategoryVisual =
-  | { kind: "color"; value: string }   // CSS color string, e.g. "#ef4444"
-  | { kind: "icon"; value: string };   // icon name/key from the icon set
+// A category always has both a color and an icon together.
+export interface CategoryVisual {
+  color: string;   // CSS color string, e.g. "#ef4444"
+  icon: string;    // icon name/key from the icon set
+}
 
 export interface Category {
   id: CategoryId;
   name: string;
+  type: CategoryType;
   visual: CategoryVisual;
 }
 
@@ -106,7 +108,8 @@ export type UpdatePayload<T extends { id: unknown }> = Pick<T, "id"> &
 const category: Category = {
   id: "cat_456" as CategoryId,
   name: "Groceries",
-  visual: { kind: "color", value: "#ef4444" },
+  type: "expense",
+  visual: { color: "#ef4444", icon: "shopping-cart" },
 };
 
 const transaction: Transaction = {
