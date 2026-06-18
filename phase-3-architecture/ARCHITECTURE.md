@@ -116,42 +116,6 @@ interface FinanceStore {
 }
 ```
 
-### What stays in local component state
-
-- Active filter values on DashboardPage and TransactionsPage — ephemeral UI state; resetting on navigation is correct behaviour.
-- Which `TransactionRow` is in inline-edit mode — local to that row.
-- Selected month on BudgetsPage.
-- Modal open/closed.
-- Form field values inside modals and inline editors — local until confirmed.
-
-### Derived state
-
-Derived values are never stored in Zustand. They are computed in dedicated hooks using `useMemo` so re-computation only occurs when direct inputs change.
-
-| Hook | Inputs | Output |
-|---|---|---|
-| `useFilteredTransactions(filter)` | `transactions`, `TransactionFilter` | `Transaction[]` |
-| `useMonthlySummary(month)` | filtered transactions | `{ income, expenses, net }` |
-| `useBudgetViewModels(month)` | transactions + budgets + categories | `BudgetViewModel[]` |
-| `useCategoryMap()` | categories | `Map<CategoryId, Category>` |
-
-`BudgetStatus` is computed inside `useBudgetViewModels`:
-- `"ok"` — spent < 80 % of limit
-- `"warning"` — spent ≥ 80 % and ≤ 100 %
-- `"exceeded"` — spent > 100 %
-
-Transfers (`type === "transfer"`) are excluded from all budget and summary calculations.
-
-### Filter propagation
-
-Each page that has filters owns the `TransactionFilter` as local `useState`. The page passes the active filter to the relevant derived-state hook. No global filter state is needed — the Dashboard filters and the Transactions page filters are independent.
-
-```
-TransactionsPage (local filter state)
-  → useFilteredTransactions(filter)   reads store.transactions
-  → passes filtered rows to TransactionTable
-```
-
 ---
 
 ## Persistence Layer
@@ -257,21 +221,8 @@ src/
 
 ## Trade-offs
 
-### Zustand
-
-- **No structural enforcement of action naming.** Redux Toolkit enforces this via `createSlice`; Zustand actions are plain functions. For a solo project a code-review convention is sufficient.
-- **Devtools are less mature than Redux DevTools.** Time-travel debugging is not available out of the box. Not needed for an assignment.
-- **`persist` middleware couples the store shape to serialisation.** Schema changes require keeping the migration system up to date. Mitigated by the explicit versioned migration approach above.
-
 ### localStorage
 
 - **5–10 MB quota.** Finance data at this scale fits comfortably. A `try/catch` around `write()` handles overflow gracefully without crashing.
-- **Multi-tab divergence.** A second tab has a stale in-memory store. Accepted: a personal finance tool is a single-tab use case.
 - **No encryption.** Data is readable by any same-origin script (XSS risk) and via browser devtools. Accepted limitation for a client-only assignment; a production app would require server-side storage.
 - **No query capability.** All filtering is in-process array iteration. Acceptable at hundreds to low thousands of transactions. IndexedDB with indexed queries would be the upgrade path if the dataset grows.
-
-### Scalability
-
-- `useBudgetViewModels` and `useMonthlySummary` iterate the full transaction array on each relevant re-render. `useMemo` with stable inputs keeps this efficient. If needed, pre-indexing transactions by month as a derived `Map` in the store is a non-structural performance fix.
-- No route-level code splitting (`React.lazy`). For four pages the bundle size impact is negligible; adding lazy loading later requires wrapping page imports only.
-- No undo/redo. The `zundo` library wraps Zustand non-invasively if this becomes a requirement.
